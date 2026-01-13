@@ -95,6 +95,7 @@ export const SignupView = () => {
         router.refresh();
       }
     } catch (err) {
+      console.error(err);
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -236,7 +237,7 @@ export const SignupView = () => {
                 </div>
 
                 {error && (
-                  <Alert variant="destructive" className="animate-in fade-in shake duration-500">
+                  <Alert variant="destructive" className="animate-in fade-in shake duration-200">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
@@ -244,7 +245,7 @@ export const SignupView = () => {
 
                 <Button
                   type="submit"
-                  className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-2 duration-500 delay-350"
+                  className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-2 delay-350"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -258,7 +259,7 @@ export const SignupView = () => {
                 </Button>
               </form>
 
-              <div className="relative animate-in fade-in duration-500 delay-400">
+              <div className="relative animate-in fade-in duration-200 delay-400">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />
                 </div>
@@ -269,7 +270,7 @@ export const SignupView = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-500">
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-200 delay-500">
                 <Button
                   type="button"
                   variant="outline"
@@ -312,7 +313,7 @@ export const SignupView = () => {
                 </Button>
               </div>
 
-              <div className="text-center text-sm animate-in fade-in duration-500 delay-600">
+              <div className="text-center text-sm animate-in fade-in duration-200 delay-600">
                 Already have an account?{" "}
                 <Link
                   href="/auth/sign-in"
@@ -324,7 +325,7 @@ export const SignupView = () => {
             </div>
           </div>
 
-          <div className="relative hidden md:flex flex-col gap-y-4 items-center justify-center bg-gradient-to-br from-green-700 to-green-900 animate-in fade-in slide-in-from-right-4 duration-700">
+          <div className="relative hidden md:flex flex-col gap-y-4 items-center justify-center rounded-tr-xl rounded-br-xl bg-linear-to-br from-[#032017] via-[#063a28] to-[#042a1c] animate-in fade-in slide-in-from-right-4 duration-700">
             <div className="animate-in zoom-in duration-1000 delay-300">
               <Image
                 src="/logo.svg"
