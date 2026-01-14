@@ -5,7 +5,8 @@
 import { useState, useEffect } from "react";
 import DashboardSidebar from "@/modules/dashboard/ui/components/dashboard-sidebar";
 import DashboardUserButton from "@/modules/dashboard/ui/components/dashboard-user-button";
-import { Bell } from "lucide-react";
+import { Search, Bell } from "lucide-react";
+import { DashboardCommand } from "@/modules/dashboard/ui/components/dashboard-command";
 import { authClient } from "@/lib/auth-client";
 
 export default function DashboardLayout({
@@ -20,6 +21,8 @@ export default function DashboardLayout({
   const [userEmail, setUserEmail] = useState<string | undefined>(
     session?.user?.email || ""
   );
+
+  const [open, setOpen] = useState(false);
 
   // Keep state synced if session changes
   useEffect(() => {
@@ -37,23 +40,42 @@ export default function DashboardLayout({
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top Navigation Bar */}
-        <div className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800/50 px-8 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Dashboard</h2>
-
-          {/* Right side - Notification & User Button */}
+        <nav className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/95 px-6 py-3 flex items-center gap-4">
+          {/* Left - small square / branding */}
           <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-slate-800 rounded-lg transition-colors duration-200 relative group">
-              <Bell className="w-5 h-5 text-slate-400 group-hover:text-slate-300 transition-colors" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full" />
+            <div className="w-8 h-8 rounded-md bg-slate-800 text-white flex items-center justify-center font-bold">M</div>
+          </div>
+
+          {/* Center - search */}
+          <div className="flex-1 flex justify-center">
+            <button
+              onClick={() => setOpen(true)}
+              className="flex items-center gap-3 w-full max-w-2xl bg-slate-800 border border-slate-700 shadow-sm rounded-xl px-4 py-2 hover:shadow-md transition"
+            >
+              <Search className="h-4 w-4 text-slate-300" />
+              <span className="text-sm text-slate-300">Find a meeting or agent</span>
+              <span className="ml-auto flex items-center gap-1">
+                <kbd className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700">⌘</kbd>
+                <kbd className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700">K</kbd>
+              </span>
+            </button>
+          </div>
+
+          {/* Right - icons */}
+          <div className="flex items-center gap-3">
+            <button className="p-2 hover:bg-slate-800 rounded-lg transition">
+              <Bell className="h-5 w-5 text-slate-300" />
             </button>
 
-            <span className="hidden md:inline text-sm text-slate-200 mr-2 truncate max-w-40">{userName}</span>
             <DashboardUserButton
               userName={userName}
               userEmail={userEmail}
             />
           </div>
-        </div>
+        </nav>
+
+        {/* Command Dialog */}
+        {/* DashboardCommand is controlled by `open` state which we need to add */}
 
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto">
@@ -62,6 +84,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </main>
+      <DashboardCommand open={open} setOpen={setOpen} />
     </div>
   );
 }
