@@ -1,21 +1,36 @@
 import { initTRPC } from '@trpc/server';
 import { cache } from 'react';
+import { auth } from '@/lib/auth';
+import { headers } from 'next/headers';
 
+/**
+ * Context creation for TRPC
+ * This runs on the server and extracts the user session from Better Auth
+ */
 export const createTRPCContext = cache(async () => {
-  /**
-   * @see: https://trpc.io/docs/server/context
-   */
+  let session = null;
+  
+  try {
+    // Get headers from Next.js request
+    const headersList = await headers();
+    
+    // Get session from Better Auth using the headers
+    session = await auth.api.getSession({
+      headers: headersList,
+    });
+  } catch (error) {
+    console.error("Failed to get session:", error);
+    session = null;
+  }
+
   return {
-    userId: 'user_123',
+    session,
+    userId: session?.user?.id || null,
   };
 });
 
-const t = initTRPC.create({
-  /**
-   * @see: https://trpc.io/docs/server/data-transformers
-   */
-  //transformer: superjson,
-});
+// Initialize TRPC with context typing
+const t = initTRPC.context<typeof createTRPCContext>().create();
 
 // Base router and procedure helpers
 export const createTRPCRouter = t.router;
