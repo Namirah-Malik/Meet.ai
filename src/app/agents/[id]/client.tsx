@@ -61,9 +61,11 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
   });
 
   const handleEditClick = () => {
-    setIsEditing(true);
     setShowMenuDropdown(false);
-    setError(null);
+    setTimeout(() => {
+      setIsEditing(true);
+      setError(null);
+    }, 100);
   };
 
   const handleSaveEdit = async () => {
@@ -77,6 +79,7 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
     setSuccess(null);
 
     try {
+      console.log('📝 Saving agent edit...');
       const response = await fetch('/api/trpc/agents.update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,13 +91,18 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
       });
 
       const data = await response.json();
+      console.log('Response:', data);
 
-      if (!response.ok) {
-        const errorMsg = data.error?.message || data.message || 'Failed to update agent';
-        throw new Error(errorMsg);
+      if (!response.ok || data.error) {
+        throw new Error(data.error?.message || 'Failed to update agent');
       }
 
-      const updatedAgent: Agent = data.result?.data ?? data;
+      // Handle tRPC response format
+      const updatedAgent = data.result?.data;
+      if (!updatedAgent) {
+        throw new Error('Invalid response');
+      }
+
       setAgent(updatedAgent);
       setIsEditing(false);
       setSuccess('Agent updated successfully!');
@@ -118,33 +126,59 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
   };
 
   const handleDeleteAgent = async () => {
+    console.log('🗑️ handleDeleteAgent called');
     setIsLoading(true);
     setError(null);
 
     try {
+      console.log('Agent ID to delete:', agent.id);
+      
+      const body = JSON.stringify(agent.id);
+      console.log('Request body:', body);
+      
       const response = await fetch('/api/trpc/agents.delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: agent.id }),
+        body: body,
       });
 
-      const data = await response.json();
+      console.log('✅ Fetch completed');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
+      const text = await response.text();
+      console.log('Response text:', text);
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+        console.log('Parsed response:', data);
+      } catch (e) {
+        console.error('Failed to parse response as JSON:', e);
+        throw new Error(`Invalid response: ${text}`);
+      }
 
       if (!response.ok) {
-        const errorMsg = data.error?.message || data.message || 'Failed to delete agent';
+        const errorMsg = data?.error?.message || 'Failed to delete agent';
+        console.error('❌ Server error:', errorMsg);
         throw new Error(errorMsg);
       }
 
+      console.log('✅ Delete successful, redirecting...');
       setShowDeleteConfirm(false);
+      
       setTimeout(() => {
+        console.log('Redirecting to /agents');
         router.push('/agents');
       }, 500);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Error deleting agent';
-      console.error('Delete error:', errorMsg);
+      console.error('🔴 Error:', errorMsg);
+      console.error('Full error object:', err);
       setError(errorMsg);
       setShowDeleteConfirm(false);
     } finally {
+      console.log('Delete operation finished');
       setIsLoading(false);
     }
   };
@@ -187,8 +221,9 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
           style={{ bottom: -100, left: -100 }}
         />
       </div>
+
       {/* Header */}
-      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur relative z-10">
+      <div className="border-b border-slate-700 bg-slate-900/50 backdrop-blur relative z-20" onClick={() => setShowMenuDropdown(false)}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <motion.button
             onClick={() => router.back()}
@@ -201,43 +236,53 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
           </motion.button>
 
           {!isEditing && (
-            <div className="relative">
-              <motion.button
-                onClick={() => setShowMenuDropdown(!showMenuDropdown)}
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('Menu button clicked, current state:', showMenuDropdown);
+                  setShowMenuDropdown(!showMenuDropdown);
+                }}
                 className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
                 disabled={isLoading}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                animate={showMenuDropdown ? { rotate: 90 } : { rotate: 0 }}
               >
                 <MoreVertical size={20} className="text-slate-400" />
-              </motion.button>
+              </button>
 
               {showMenuDropdown && (
                 <motion.div
-                  className="absolute right-0 mt-2 w-40 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg z-50"
+                  className="absolute right-0 mt-2 w-40 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg z-[100]"
                   initial={{ opacity: 0, scale: 0.95, y: -10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -10 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <motion.button
-                    onClick={handleEditClick}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      console.log('Edit menu item clicked');
+                      handleEditClick();
+                    }}
                     className="w-full px-4 py-2 text-blue-400 hover:bg-slate-700 flex gap-2 items-center text-sm transition-colors"
-                    whileHover={{ x: 4 }}
                   >
                     <Edit2 size={16} /> Edit
-                  </motion.button>
-                  <motion.button
-                    onClick={() => {
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      console.log('Delete button in menu - onClick fired');
+                      e.stopPropagation();
+                      e.preventDefault();
+                      console.log('Delete menu item clicked');
                       setShowDeleteConfirm(true);
                       setShowMenuDropdown(false);
                     }}
-                    className="w-full px-4 py-2 text-red-400 hover:bg-slate-700 flex gap-2 items-center text-sm border-t border-slate-700 transition-colors"
-                    whileHover={{ x: 4 }}
+                    className="w-full text-left px-4 py-2 text-red-400 hover:bg-slate-700 flex gap-2 items-center text-sm border-t border-slate-700 transition-colors cursor-pointer"
                   >
                     <Trash2 size={16} /> Delete
-                  </motion.button>
+                  </button>
                 </motion.div>
               )}
             </div>
@@ -250,17 +295,18 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
         {/* Error Alert */}
         {error && (
           <motion.div
-            className="mb-6 bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-lg flex justify-between"
+            className="mb-6 bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-lg flex justify-between items-center"
             initial={{ opacity: 0, y: -10, x: -20 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
             exit={{ opacity: 0, y: -10, x: 20 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
-            <span className="text-sm">{error}</span>
+            <span className="text-sm flex-1">{error}</span>
             <motion.button 
               onClick={() => setError(null)}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
+              className="flex-shrink-0 ml-4"
             >
               <X size={18} />
             </motion.button>
@@ -294,7 +340,7 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
         >
           {/* Avatar & Name Section */}
           <div className="flex items-start gap-6">
-          {/* Avatar */}
+            {/* Avatar */}
             <div className="relative flex-shrink-0 group">
               <motion.div
                 className={`absolute inset-0 bg-gradient-to-r ${gradient} rounded-2xl blur-md opacity-60 group-hover:opacity-100 transition-all duration-300`}
@@ -410,7 +456,6 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                autoFocus
               />
             ) : (
               <motion.p 
@@ -460,76 +505,57 @@ export function AgentPageClient({ agent: initialAgent }: AgentPageClientProps) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <motion.div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[200]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
           <motion.div
-            className="bg-slate-800 p-6 rounded-xl border border-slate-700 w-full max-w-md shadow-2xl"
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="bg-slate-800 p-6 rounded-xl border border-slate-700 w-full max-w-md"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <motion.div 
-              className="flex justify-between items-start mb-4"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-            >
+            <div className="flex justify-between items-start mb-4">
               <h3 className="text-xl font-semibold text-white">Delete Agent?</h3>
-              <motion.button
+              <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="text-slate-400 hover:text-white transition-colors"
-                whileHover={{ scale: 1.1, rotate: 90 }}
-                whileTap={{ scale: 0.9 }}
               >
                 <X size={20} />
-              </motion.button>
-            </motion.div>
+              </button>
+            </div>
 
-            <motion.p 
-              className="text-slate-300 mb-6 text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.15 }}
-            >
+            <p className="text-slate-300 mb-6 text-sm">
               This will permanently remove{' '}
-              <span className="text-red-400 font-semibold">{agent.name}</span> and{' '}
-              <span className="text-red-400 font-semibold">
-                {agent.meetingsCount ?? 0}
-              </span>{' '}
-              associated meetings.
-            </motion.p>
+              <span className="text-red-400 font-semibold">{agent.name}</span> and all associated meetings. This action cannot be undone.
+            </p>
 
-            <motion.div 
-              className="flex gap-3"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <motion.button
-                onClick={() => setShowDeleteConfirm(false)}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  console.log('Cancel button clicked');
+                  setShowDeleteConfirm(false);
+                }}
                 disabled={isLoading}
                 className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold py-2 rounded-lg transition-colors"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
               >
                 Cancel
-              </motion.button>
-              <motion.button
-                onClick={handleDeleteAgent}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Delete button clicked');
+                  handleDeleteAgent();
+                }}
                 disabled={isLoading}
                 className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-500 text-white font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                whileHover={{ scale: 1.02, boxShadow: "0 0 20px rgba(220, 38, 38, 0.4)" }}
-                whileTap={{ scale: 0.98 }}
+                type="button"
               >
                 {isLoading && <Loader2 size={16} className="animate-spin" />}
                 {isLoading ? 'Deleting...' : 'Delete'}
-              </motion.button>
-            </motion.div>
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

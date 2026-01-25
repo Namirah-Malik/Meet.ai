@@ -74,14 +74,14 @@ export const agentsRouter = createTRPCRouter({
     }),
 
   // =====================
-  // UPDATE AGENT ✅ (FIX)
+  // UPDATE AGENT
   // =====================
   update: baseProcedure
     .input(
       z.object({
         id: z.string(),
         name: z.string().min(1),
-        instructions: z.string().min(1),
+        instructions: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -118,7 +118,7 @@ export const agentsRouter = createTRPCRouter({
           .update(agents)
           .set({
             name: input.name,
-            instructions: input.instructions,
+            instructions: input.instructions || existing[0].instructions,
             updatedAt: new Date(),
           })
           .where(eq(agents.id, input.id))
@@ -135,40 +135,60 @@ export const agentsRouter = createTRPCRouter({
     }),
 
   // =====================
-  // DELETE AGENT
+  // DELETE AGENT - FIXED
   // =====================
   delete: baseProcedure
     .input(z.string())
     .mutation(async ({ input: agentId, ctx }) => {
+      console.log('Delete mutation called with agent ID:', agentId);
+      console.log('Session:', ctx.session);
+
       const session = ctx.session;
 
       if (!session?.user?.id) {
+        console.error('No user session found');
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "User not authenticated",
         });
       }
 
-      const agent = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.id, agentId));
+      try {
+        const agent = await db
+          .select()
+          .from(agents)
+          .where(eq(agents.id, agentId));
 
-      if (!agent.length) {
+        console.log('Found agent:', agent);
+
+        if (!agent.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Agent not found",
+          });
+        }
+
+        if (agent[0].userId !== session.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not allowed to delete this agent",
+          });
+        }
+
+        const result = await db.delete(agents).where(eq(agents.id, agentId)).returning();
+        
+        console.log('Delete result:', result);
+
+        return { success: true, deleted: true };
+      } catch (error) {
+        console.error("Delete agent error:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Agent not found",
+          code: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Failed to delete agent",
         });
       }
-
-      if (agent[0].userId !== session.user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not allowed to delete this agent",
-        });
-      }
-
-      await db.delete(agents).where(eq(agents.id, agentId));
-      return { success: true };
     }),
 });
