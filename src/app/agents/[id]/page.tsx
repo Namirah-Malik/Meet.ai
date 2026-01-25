@@ -1,41 +1,38 @@
-// app/agents/[id]/page.tsx
-
-import { notFound } from "next/navigation"
-import Link from "next/link"
-import { Agent } from "@/modules/agents/types"
-import { AgentPageClient } from "./client"
+import { notFound } from 'next/navigation';
+import { Agent } from '@/modules/agents/types';
+import { AgentPageClient } from './client';
+import { db } from '@/db';
+import { agents } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 interface AgentPageProps {
-  params: {
-    id: string
-  }
+  params: Promise<{
+    id: string;
+  }>;
 }
 
 async function getAgent(id: string): Promise<Agent | null> {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/trpc/agents.getById?id=${id}`,
-      { cache: "no-store" }
-    )
+    const result = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, id))
+      .limit(1);
 
-    if (!response.ok) return null
-
-    const text = await response.text()
-    const result = JSON.parse(text)
-
-    return result.result?.data || result[0] || result
+    return result[0] || null;
   } catch (error) {
-    console.error("Failed to fetch agent:", error)
-    return null
+    console.error('Failed to fetch agent:', error);
+    return null;
   }
 }
 
 export default async function AgentPage({ params }: AgentPageProps) {
-  const agent = await getAgent(params.id)
+  const { id } = await params;
+  const agent = await getAgent(id);
 
   if (!agent) {
-    notFound()
+    notFound();
   }
 
-  return <AgentPageClient agent={agent} />
+  return <AgentPageClient agent={agent} />;
 }
