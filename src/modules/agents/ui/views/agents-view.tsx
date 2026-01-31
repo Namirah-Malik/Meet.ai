@@ -11,26 +11,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Plus } from "lucide-react"
 import { motion } from "framer-motion"
+import { trpc } from "@/trpc/client"
 
 export const AgentsView = () => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [instructions, setInstructions] = useState("")
-  const [isCreating, setIsCreating] = useState(false)
-  const [agents, setAgents] = useState<Agent[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isError, setIsError] = useState(false)
   const [key, setKey] = useState(0)
+
+  // Use tRPC to fetch agents
+  const { data: agents = [], isLoading, isError, refetch } = trpc.agents.getMany.useQuery()
 
   const {
     filters,
@@ -45,83 +38,24 @@ export const AgentsView = () => {
     resetFilters,
   } = useAgentsFilters(agents)
 
-  useEffect(() => {
-    fetchAgents()
-  }, [])
-
-  const fetchAgents = async () => {
-    try {
-      setIsLoading(true)
-      setIsError(false)
-      
-      const response = await fetch("/api/trpc/agents.getMany", {
-        method: "GET",
-      })
-
-      const text = await response.text()
-      const result = JSON.parse(text)
-      
-      if (result.result?.data && Array.isArray(result.result.data)) {
-        const transformedAgents = result.result.data.map((agent: any) => ({
-          ...agent,
-          meetingsCount: 5,
-        }))
-        setAgents(transformedAgents)
-      } else if (Array.isArray(result)) {
-        const transformedAgents = result.map((agent: any) => ({
-          ...agent,
-          meetingsCount: 5,
-        }))
-        setAgents(transformedAgents)
-      } else {
-        setIsError(true)
-      }
-    } catch (error) {
-      console.error("Failed to fetch agents:", error)
-      setIsError(true)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const createAgentMutation = trpc.agents.create.useMutation({
+    onSuccess: () => {
+      refetch()
+      setName("")
+      setInstructions("")
+      setOpen(false)
+      setKey(prev => prev + 1)
+    },
+  })
 
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!name.trim() || !instructions.trim()) return
 
-    if (!name.trim() || !instructions.trim()) {
-      return
-    }
-
-    setIsCreating(true)
-
-    try {
-      const response = await fetch("/api/trpc/agents.create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          instructions: instructions.trim(),
-        }),
-      })
-
-      const text = await response.text()
-      const result = JSON.parse(text)
-
-      if (response.ok) {
-        await fetchAgents()
-        setName("")
-        setInstructions("")
-        setOpen(false)
-        setKey(prev => prev + 1)
-      } else {
-        console.error("Failed to create agent:", result)
-      }
-    } catch (error) {
-      console.error("Failed to create agent:", error)
-    } finally {
-      setIsCreating(false)
-    }
+    createAgentMutation.mutate({
+      name: name.trim(),
+      instructions: instructions.trim(),
+    })
   }
 
   const handleResetFilters = () => {
@@ -154,10 +88,7 @@ export const AgentsView = () => {
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button className="bg-green-500 hover:bg-green-600 text-white gap-2 font-semibold px-4 py-1 h-9 text-sm">
                   <Plus className="h-4 w-4" />
                   New Agent
@@ -167,9 +98,7 @@ export const AgentsView = () => {
             <DialogContent className="bg-slate-900 border border-slate-700">
               <DialogHeader>
                 <DialogTitle className="text-white text-xl">Create New Agent</DialogTitle>
-                <DialogDescription className="text-slate-400">
-                  Add a new agent to your workspace
-                </DialogDescription>
+                <DialogDescription className="text-slate-400">Add a new agent to your workspace</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateAgent} className="space-y-3">
                 <div className="space-y-2">
@@ -179,7 +108,7 @@ export const AgentsView = () => {
                     placeholder="Enter agent name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    disabled={isCreating}
+                    disabled={createAgentMutation.isPending}
                     required
                     className="bg-slate-800 border-slate-700 text-white placeholder-slate-500 text-sm h-9"
                   />
@@ -191,7 +120,7 @@ export const AgentsView = () => {
                     placeholder="Enter agent instructions"
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
-                    disabled={isCreating}
+                    disabled={createAgentMutation.isPending}
                     required
                     rows={3}
                     className="bg-slate-800 border-slate-700 text-white placeholder-slate-500 text-sm"
@@ -202,7 +131,7 @@ export const AgentsView = () => {
                     type="button"
                     variant="outline"
                     onClick={() => setOpen(false)}
-                    disabled={isCreating}
+                    disabled={createAgentMutation.isPending}
                     className="border-slate-700 text-slate-300 hover:bg-slate-800 text-sm h-9"
                   >
                     Cancel
@@ -210,9 +139,9 @@ export const AgentsView = () => {
                   <Button
                     type="submit"
                     className="bg-green-500 hover:bg-green-600 text-white text-sm h-9"
-                    disabled={isCreating || !name.trim() || !instructions.trim()}
+                    disabled={createAgentMutation.isPending || !name.trim() || !instructions.trim()}
                   >
-                    {isCreating ? "Creating..." : "Create"}
+                    {createAgentMutation.isPending ? "Creating..." : "Create"}
                   </Button>
                 </div>
               </form>
@@ -220,12 +149,10 @@ export const AgentsView = () => {
           </Dialog>
         </div>
 
-        {/* Show empty state when no agents */}
         {allAgentsEmpty ? (
           <EmptyState onCreateClick={() => setOpen(true)} />
         ) : (
           <>
-            {/* Filter Form */}
             <AgentForm
               key={key}
               onSearch={setSearch}
@@ -236,7 +163,6 @@ export const AgentsView = () => {
               totalResults={filteredAgents.length}
             />
 
-            {/* No Results Message */}
             {noResultsAfterFilter ? (
               <motion.div
                 className="flex flex-col items-center justify-center h-64 text-center"
@@ -245,9 +171,7 @@ export const AgentsView = () => {
               >
                 <div className="text-6xl mb-4">🔍</div>
                 <h3 className="text-lg font-semibold text-gray-900">No agents found</h3>
-                <p className="text-gray-600 text-sm mt-1">
-                  Try adjusting your search or filters
-                </p>
+                <p className="text-gray-600 text-sm mt-1">Try adjusting your search or filters</p>
                 <Button
                   onClick={handleResetFilters}
                   variant="outline"
@@ -258,28 +182,21 @@ export const AgentsView = () => {
               </motion.div>
             ) : (
               <>
-                {/* Data Table - Show paginated agents */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                   className="border border-slate-700 rounded-lg overflow-hidden bg-slate-800/50 flex-1"
                 >
-                  <DataTable
-                    columns={columns}
-                    data={paginatedAgents}
-                    isLoading={isLoading}
-                  />
+                  <DataTable columns={columns} data={paginatedAgents} isLoading={isLoading} />
                 </motion.div>
 
-                {/* Pagination Info and Controls */}
                 <motion.div
                   className="flex items-center justify-between gap-4 py-4 flex-shrink-0"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {/* Page Info */}
                   <div>
                     <p className="text-slate-400 font-medium text-sm">
                       Page <span className="text-slate-100 font-bold">{paginationInfo.currentPage}</span> of{" "}
@@ -287,7 +204,6 @@ export const AgentsView = () => {
                     </p>
                   </div>
 
-                  {/* Navigation Buttons */}
                   <div className="flex gap-3">
                     <motion.button
                       onClick={previousPage}

@@ -10,11 +10,13 @@
 
 // server/routers/_app.ts
 
+// src/trpc/routers/_app.ts
 import { createTRPCRouter } from "@/trpc/init";
-import { agentsRouter } from "@/trpc/routers/agents";
- // Update this path to match your file location
+import { meetingsRouter } from "@/app/api/trpc/routers/meetings";
+import { agentsRouter } from "./agents";
 
 export const appRouter = createTRPCRouter({
+  meetings: meetingsRouter,
   agents: agentsRouter,
 });
 

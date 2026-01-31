@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
 import { db } from "@/db";
-import { agents, meetings } from "@/db/schema";
-import { eq, and, count } from "drizzle-orm";
+import { meetings } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export const agentsRouter = createTRPCRouter({
+const meetingStatusEnum = z.enum([
+  "upcoming",
+  "active",
+  "completed",
+  "processing",
+  "cancelled",
+]);
+
+export const meetingsRouter = createTRPCRouter({
   getMany: protectedProcedure
     .input(
       z.object({
@@ -18,8 +26,8 @@ export const agentsRouter = createTRPCRouter({
 
       const data = await db
         .select()
-        .from(agents)
-        .where(eq(agents.userId, ctx.userId))
+        .from(meetings)
+        .where(eq(meetings.userId, ctx.userId))
         .limit(limit)
         .offset(offset);
 
@@ -39,8 +47,8 @@ export const agentsRouter = createTRPCRouter({
 
       const data = await db
         .select()
-        .from(agents)
-        .where(eq(agents.userId, ctx.userId))
+        .from(meetings)
+        .where(eq(meetings.userId, ctx.userId))
         .limit(limit)
         .offset(offset);
 
@@ -50,49 +58,43 @@ export const agentsRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(z.string())
     .query(async ({ ctx, input }) => {
-      const agentData = await db
+      const data = await db
         .select()
-        .from(agents)
+        .from(meetings)
         .where(
           and(
-            eq(agents.id, input),
-            eq(agents.userId, ctx.userId)
+            eq(meetings.id, input),
+            eq(meetings.userId, ctx.userId)
           )
         )
         .limit(1);
 
-      if (!agentData || agentData.length === 0) {
-        throw new Error("Agent not found");
+      if (!data || data.length === 0) {
+        throw new Error("Meeting not found");
       }
 
-      const agent = agentData[0];
-
-      // Get meeting count for this agent
-      const meetingCountResult = await db
-        .select({ count: count() })
-        .from(meetings)
-        .where(eq(meetings.agentId, agent.id));
-
-      return {
-        ...agent,
-        meetingsCount: meetingCountResult[0]?.count || 0,
-      };
+      return data[0];
     }),
 
   create: protectedProcedure
     .input(
       z.object({
         name: z.string().min(1),
-        instructions: z.string().optional().default(""),
+        agentId: z.string(),
+        description: z.string().optional(),
+        scheduledAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const data = await db
-        .insert(agents)
+        .insert(meetings)
         .values({
           name: input.name,
           userId: ctx.userId,
-          instructions: input.instructions || "",
+          agentId: input.agentId,
+          description: input.description,
+          scheduledAt: input.scheduledAt,
+          status: "upcoming",
         })
         .returning();
 
@@ -104,28 +106,33 @@ export const agentsRouter = createTRPCRouter({
       z.object({
         id: z.string(),
         name: z.string().optional(),
-        instructions: z.string().optional(),
+        description: z.string().optional(),
+        status: meetingStatusEnum.optional(),
+        notes: z.string().optional(),
+        scheduledAt: z.date().optional(),
+        startedAt: z.date().optional(),
+        endedAt: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...updateData } = input;
 
       const data = await db
-        .update(agents)
+        .update(meetings)
         .set({
           ...updateData,
           updatedAt: new Date(),
         })
         .where(
           and(
-            eq(agents.id, id),
-            eq(agents.userId, ctx.userId)
+            eq(meetings.id, id),
+            eq(meetings.userId, ctx.userId)
           )
         )
         .returning();
 
       if (!data || data.length === 0) {
-        throw new Error("Agent not found or unauthorized");
+        throw new Error("Meeting not found or unauthorized");
       }
 
       return data[0];
@@ -135,17 +142,17 @@ export const agentsRouter = createTRPCRouter({
     .input(z.string())
     .mutation(async ({ ctx, input }) => {
       const data = await db
-        .delete(agents)
+        .delete(meetings)
         .where(
           and(
-            eq(agents.id, input),
-            eq(agents.userId, ctx.userId)
+            eq(meetings.id, input),
+            eq(meetings.userId, ctx.userId)
           )
         )
         .returning();
 
       if (!data || data.length === 0) {
-        throw new Error("Agent not found or unauthorized");
+        throw new Error("Meeting not found or unauthorized");
       }
 
       return { success: true };

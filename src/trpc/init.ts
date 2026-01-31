@@ -1,38 +1,62 @@
-import { initTRPC } from '@trpc/server';
-import { cache } from 'react';
-import { auth } from '@/lib/auth';
-import { headers } from 'next/headers';
+import { initTRPC, TRPCError } from "@trpc/server";
+import { cache } from "react";
+import { headers } from "next/headers";
 
 /**
- * Context creation for TRPC
- * This runs on the server and extracts the user session from Better Auth
+ * Context creation for tRPC with Better Auth integration
  */
 export const createTRPCContext = cache(async () => {
   let session = null;
-  
+  let userId: string | null = null;
+
   try {
-    // Get headers from Next.js request
+    const { auth } = await import("@/lib/auth");
     const headersList = await headers();
-    
-    // Get session from Better Auth using the headers
+
     session = await auth.api.getSession({
       headers: headersList,
     });
+
+    userId = session?.user?.id || null;
   } catch (error) {
-    console.error("Failed to get session:", error);
-    session = null;
+    console.error("Failed to get Better Auth session:", error);
+    userId = null;
   }
 
   return {
     session,
-    userId: session?.user?.id || null,
+    userId,
   };
 });
 
-// Initialize TRPC with context typing
-const t = initTRPC.context<typeof createTRPCContext>().create();
+// Initialize tRPC with context typing
+const t = initTRPC
+  .context<Awaited<ReturnType<typeof createTRPCContext>>>()
+  .create({
+    isServer: true,
+    allowOutsideOfServer: true,
+  });
 
 // Base router and procedure helpers
 export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
+
+// Protected procedure - requires authentication
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.userId) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in to access this resource",
+    });
+  }
+
+  return next({
+    ctx: {
+      userId: ctx.userId,
+      session: ctx.session,
+    },
+  });
+});
+
+// Public procedure - no authentication required
 export const baseProcedure = t.procedure;
