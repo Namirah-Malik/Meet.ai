@@ -1,6 +1,16 @@
-import { text, timestamp, pgTable, boolean, index } from "drizzle-orm/pg-core";
+import { text, timestamp, pgTable, boolean, index, pgEnum } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 
+// Enums
+export const meetingStatusEnum = pgEnum("meeting_status", [
+  "upcoming",
+  "active",
+  "completed",
+  "processing",
+  "cancelled",
+]);
+
+// User table
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -9,7 +19,11 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
-  });
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// Session table
 export const session = pgTable(
   "session",
   {
@@ -18,7 +32,7 @@ export const session = pgTable(
     token: text("token").notNull().unique(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
@@ -28,6 +42,8 @@ export const session = pgTable(
   },
   (table) => [index("session_userId_idx").on(table.userId)],
 );
+
+// Account table
 export const account = pgTable(
   "account",
   {
@@ -46,11 +62,13 @@ export const account = pgTable(
     password: text("password"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [index("account_userId_idx").on(table.userId)],
 );
+
+// Verification table
 export const verification = pgTable(
   "verification",
   {
@@ -61,11 +79,13 @@ export const verification = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
+
+// Agents table
 export const agents = pgTable("agents", {
   id: text("id")
     .primaryKey()
@@ -78,3 +98,33 @@ export const agents = pgTable("agents", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Meetings table
+export const meetings = pgTable(
+  "meetings",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    name: text("name").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    status: meetingStatusEnum("status").default("upcoming").notNull(),
+    description: text("description"),
+    scheduledAt: timestamp("scheduled_at"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("meetings_userId_idx").on(table.userId),
+    index("meetings_agentId_idx").on(table.agentId),
+    index("meetings_status_idx").on(table.status),
+  ],
+);
