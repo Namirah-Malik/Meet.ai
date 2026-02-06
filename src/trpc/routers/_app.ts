@@ -15,6 +15,7 @@ import { createTRPCRouter } from "@/trpc/init";
 import { meetingsRouter } from "@/app/api/trpc/routers/meetings";
 import { agentsRouter } from "./agents";
 
+
 export const appRouter = createTRPCRouter({
   meetings: meetingsRouter,
   agents: agentsRouter,
