@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Play, X, Clock, User, FileText, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Play, X, Clock, User, FileText, Loader2, CheckCircle2, Mic, MicOff, Video, VideoOff, Phone } from 'lucide-react';
 import { trpc } from '@/trpc/client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -13,6 +13,12 @@ export default function MeetingDetailPage() {
   const meetingId = params.id as string;
   const [showNotesInput, setShowNotesInput] = useState(false);
   const [notes, setNotes] = useState('');
+  const [isCallJoined, setIsCallJoined] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
   const meetingQuery = trpc.meetings.getById.useQuery(meetingId);
   const meeting = meetingQuery.data;
@@ -52,7 +58,130 @@ export default function MeetingDetailPage() {
     await startMeetingMutation.mutateAsync(meetingId);
   };
 
+  // Render video frames to canvas
+  useEffect(() => {
+    if (!isCallJoined || !videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return;
+
+    const drawFrame = () => {
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        // Set canvas size to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Mirror the video
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+
+        // Draw the video frame
+        ctx.drawImage(video, 0, 0);
+      }
+      requestAnimationFrame(drawFrame);
+    };
+
+    drawFrame();
+  }, [isCallJoined]);
+
+  const handleJoinCall = async () => {
+    try {
+      // Request camera and microphone permissions
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 },
+          facingMode: 'user'
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      // Set stream to state and video element
+      setMediaStream(stream);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        // Ensure video plays
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(err => {
+            console.error('Play error:', err);
+            toast.error('Failed to play video');
+          });
+        };
+      }
+
+      setIsCallJoined(true);
+      setIsMicOn(true);
+      setIsVideoOn(true);
+      toast.success('✅ Camera and microphone enabled!');
+    } catch (error: any) {
+      console.error('Error accessing media:', error);
+      if (error.name === 'NotAllowedError') {
+        toast.error('❌ Camera/Mic access denied. Please allow permissions in browser');
+      } else if (error.name === 'NotFoundError') {
+        toast.error('❌ No camera/microphone found. Please check your device');
+      } else {
+        toast.error('❌ Error: ' + error.message);
+      }
+    }
+  };
+
+  const handleToggleMic = async () => {
+    if (!mediaStream) {
+      toast.error('Call not active');
+      return;
+    }
+
+    mediaStream.getAudioTracks().forEach(track => {
+      track.enabled = !isMicOn;
+    });
+
+    setIsMicOn(!isMicOn);
+    toast.success(isMicOn ? '🔇 Microphone muted' : '🎤 Microphone unmuted');
+  };
+
+  const handleToggleVideo = async () => {
+    if (!mediaStream) {
+      toast.error('Call not active');
+      return;
+    }
+
+    mediaStream.getVideoTracks().forEach(track => {
+      track.enabled = !isVideoOn;
+    });
+
+    setIsVideoOn(!isVideoOn);
+    toast.success(isVideoOn ? '📹 Camera stopped' : '📹 Camera started');
+  };
+
+  const handleLeaveCall = async () => {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setMediaStream(null);
+    setIsCallJoined(false);
+    setIsMicOn(true);
+    setIsVideoOn(true);
+    toast.success('Left call');
+  };
+
   const handleEndMeeting = async () => {
+    if (isCallJoined) {
+      await handleLeaveCall();
+    }
     await endMeetingMutation.mutateAsync({
       id: meetingId,
       notes: notes || undefined,
@@ -61,9 +190,21 @@ export default function MeetingDetailPage() {
 
   const handleCancelMeeting = async () => {
     if (confirm('Are you sure you want to cancel this meeting?')) {
+      if (isCallJoined) {
+        await handleLeaveCall();
+      }
       await cancelMeetingMutation.mutateAsync(meetingId);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [mediaStream]);
 
   const formatDate = (date: any) => {
     if (!date) return 'Not scheduled';
@@ -111,8 +252,6 @@ export default function MeetingDetailPage() {
           badgeBg: 'bg-yellow-500/30',
           badgeText: 'text-yellow-300',
           badgeBorder: 'border-yellow-500/50',
-          icon: Clock,
-          iconColor: 'text-yellow-300',
         };
       case 'active':
         return {
@@ -120,8 +259,6 @@ export default function MeetingDetailPage() {
           badgeBg: 'bg-green-500/30',
           badgeText: 'text-green-300',
           badgeBorder: 'border-green-500/50',
-          icon: Play,
-          iconColor: 'text-green-300',
         };
       case 'completed':
         return {
@@ -129,8 +266,6 @@ export default function MeetingDetailPage() {
           badgeBg: 'bg-purple-500/30',
           badgeText: 'text-purple-300',
           badgeBorder: 'border-purple-500/50',
-          icon: CheckCircle2,
-          iconColor: 'text-purple-300',
         };
       case 'cancelled':
         return {
@@ -138,8 +273,6 @@ export default function MeetingDetailPage() {
           badgeBg: 'bg-red-500/30',
           badgeText: 'text-red-300',
           badgeBorder: 'border-red-500/50',
-          icon: X,
-          iconColor: 'text-red-300',
         };
       default:
         return {
@@ -147,20 +280,17 @@ export default function MeetingDetailPage() {
           badgeBg: 'bg-blue-500/30',
           badgeText: 'text-blue-300',
           badgeBorder: 'border-blue-500/50',
-          icon: Clock,
-          iconColor: 'text-blue-300',
         };
     }
   };
 
   const config = getStatusConfig();
-  const StatusIcon = config.icon;
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${config.bgGradient}`}>
       {/* Header */}
       <div className="bg-slate-900/50 border-b border-slate-700/50 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -179,7 +309,7 @@ export default function MeetingDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Meeting Status Indicator */}
         <div className="mb-8">
           <div className="inline-block">
@@ -193,9 +323,95 @@ export default function MeetingDetailPage() {
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left Content */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
+            {/* Video Call Area - Only for Active Meetings */}
+            {meeting.status === 'active' && (
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-0 mb-8 overflow-hidden">
+                {/* Video Call UI */}
+                <div className="relative bg-black aspect-video flex items-center justify-center w-full">
+                  {/* Hidden video element - for capturing camera feed */}
+                  <video
+                    ref={videoRef}
+                    style={{ display: 'none' }}
+                  />
+
+                  {isCallJoined ? (
+                    <>
+                      {/* Canvas for displaying video */}
+                      <canvas
+                        ref={canvasRef}
+                        className="w-full h-full object-cover bg-black"
+                      />
+
+                      {/* Call Controls */}
+                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/90 backdrop-blur px-6 py-3 rounded-full border border-slate-700 z-20">
+                        <button
+                          onClick={handleToggleMic}
+                          className={`p-3 rounded-full transition-all ${
+                            isMicOn
+                              ? 'bg-slate-700 hover:bg-slate-600'
+                              : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                          title={isMicOn ? 'Mute microphone' : 'Unmute microphone'}
+                        >
+                          {isMicOn ? (
+                            <Mic size={20} className="text-white" />
+                          ) : (
+                            <MicOff size={20} className="text-white" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleToggleVideo}
+                          className={`p-3 rounded-full transition-all ${
+                            isVideoOn
+                              ? 'bg-slate-700 hover:bg-slate-600'
+                              : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                          title={isVideoOn ? 'Stop camera' : 'Start camera'}
+                        >
+                          {isVideoOn ? (
+                            <Video size={20} className="text-white" />
+                          ) : (
+                            <VideoOff size={20} className="text-white" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleLeaveCall}
+                          className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition-all"
+                          title="Leave call"
+                        >
+                          <Phone size={20} className="text-white" />
+                        </button>
+                      </div>
+
+                      {/* Status Info */}
+                      <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 z-20">
+                        <p className="text-sm text-green-300 font-medium">🟢 Call Active</p>
+                        <p className="text-xs text-slate-400">Connected with {meeting.agent?.name}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleJoinCall}
+                      className="group flex flex-col items-center gap-4 hover:opacity-90 transition-opacity"
+                    >
+                      <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center border-2 border-green-500/50 group-hover:border-green-400 group-hover:bg-green-500/30 transition-all">
+                        <Phone size={48} className="text-green-300" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-slate-400 font-medium group-hover:text-green-300 transition-colors">Click to join call</p>
+                        <p className="text-sm text-slate-500 mt-1">Camera & Microphone will be enabled</p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Meeting Info Card */}
             <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 mb-8">
               <h2 className="text-3xl font-bold text-white mb-6">{meeting.name}</h2>
@@ -245,20 +461,6 @@ export default function MeetingDetailPage() {
               </div>
             )}
 
-            {meeting.status === 'active' && (
-              <div className="bg-slate-800 rounded-lg border border-slate-700 p-8">
-                <h3 className="text-xl font-bold text-white mb-6">Meeting in Progress</h3>
-                <div className="aspect-video bg-gradient-to-br from-slate-900 to-slate-950 rounded-lg border border-slate-700 flex items-center justify-center mb-8">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/50 animate-pulse">
-                      <Play size={40} className="text-green-300" />
-                    </div>
-                    <p className="text-slate-400 font-medium">Meeting started at {formatDate(meeting.startedAt)}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {meeting.status === 'completed' && (
               <div className="bg-slate-800 rounded-lg border border-slate-700 p-8">
                 <h3 className="text-xl font-bold text-white mb-6">Meeting Completed</h3>
@@ -268,7 +470,6 @@ export default function MeetingDetailPage() {
                       <CheckCircle2 size={40} className="text-purple-300" />
                     </div>
                     <p className="text-slate-400 font-medium">Meeting completed successfully</p>
-                    <p className="text-sm text-slate-500 mt-2">This meeting was completed, a summary will appear soon</p>
                   </div>
                 </div>
 
@@ -336,7 +537,8 @@ export default function MeetingDetailPage() {
                     {!showNotesInput ? (
                       <Button
                         onClick={() => setShowNotesInput(true)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={isCallJoined}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         End Meeting
                       </Button>
