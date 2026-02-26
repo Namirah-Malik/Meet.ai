@@ -119,6 +119,11 @@ export const meetings = pgTable(
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     notes: text("notes"),
+    // ── New columns ──────────────────────────────────────────────────────────
+    summary: text("summary"),
+    transcriptUrl: text("transcript_url"),
+    recordingUrl: text("recording_url"),
+    // ────────────────────────────────────────────────────────────────────────
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
